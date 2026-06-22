@@ -8,8 +8,8 @@ async function extractTextFromPDF(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
-      // Converte o PDF para base64 e envia para a Anthropic ler
-      const base64 = e.target.result.split(',')[1]
+      const result = e.target.result
+      const base64 = result.includes(',') ? result.split(',')[1] : result
       resolve(base64)
     }
     reader.onerror = reject
