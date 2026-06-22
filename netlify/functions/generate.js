@@ -7,7 +7,7 @@ exports.handler = async (event) => {
   if (!ANTHROPIC_KEY) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'ANTHROPIC_API_KEY não configurada. Vá a Netlify → Site configuration → Environment variables e adicione a chave.' })
+      body: JSON.stringify({ error: 'ANTHROPIC_API_KEY não configurada.' })
     }
   }
 
@@ -20,7 +20,6 @@ exports.handler = async (event) => {
 
   const { prompt, pdfBase64, extractOnly, email, isFirst, newsletter } = body
 
-  // Log do lead (visível em Netlify → Functions → generate → Logs)
   if (isFirst && email) {
     const consent = newsletter ? 'newsletter=SIM' : 'newsletter=NAO'
     console.log(`[LEAD] ${new Date().toISOString()} | email=${email} | ${consent}`)
@@ -30,7 +29,8 @@ exports.handler = async (event) => {
     let messages
 
     if (extractOnly && pdfBase64) {
-      // Modo extracção: lê o PDF e devolve o texto
+      const cleanBase64 = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64
+
       messages = [{
         role: 'user',
         content: [
@@ -39,7 +39,7 @@ exports.handler = async (event) => {
             source: {
               type: 'base64',
               media_type: 'application/pdf',
-              data: pdfBase64
+              data: cleanBase64
             }
           },
           {
@@ -49,7 +49,6 @@ exports.handler = async (event) => {
         ]
       }]
     } else {
-      // Modo geração de secção
       messages = [{ role: 'user', content: prompt }]
     }
 
@@ -69,9 +68,11 @@ exports.handler = async (event) => {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
+      const errMsg = err.error?.message || `Erro Anthropic ${res.status}`
+      console.error(`[API ERROR] ${res.status}: ${errMsg}`)
       return {
         statusCode: res.status,
-        body: JSON.stringify({ error: err.error?.message || `Erro Anthropic ${res.status}` })
+        body: JSON.stringify({ error: errMsg })
       }
     }
 
@@ -84,6 +85,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({ text })
     }
   } catch (e) {
+    console.error(`[FUNCTION ERROR] ${e.message}`)
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Erro de ligação: ' + e.message })
