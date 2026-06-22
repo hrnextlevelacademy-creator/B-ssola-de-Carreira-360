@@ -5,18 +5,35 @@ import { generatePDF } from './pdf.js'
 
 // ── Extrai texto de PDF no browser via FileReader + API Anthropic vision ──
 async function extractTextFromPDF(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target.result
-      const base64 = result.includes(',') ? result.split(',')[1] : result
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+      script.onload = resolve
+      script.onerror = reject
+      document.head.appendChild(script)
+    })
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  }
 
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  let fullText = ''
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const pageText = content.items.map(item => item.str).join(' ')
+    fullText += pageText + '\n'
+  }
+
+  if (!fullText.trim()) {
+    throw new Error('Não foi possível extrair texto do PDF. Certifique-se de que o PDF não é uma imagem digitalizada.')
+  }
+
+  return fullText.trim()
+}
 // ── Sub-components ────────────────────────────────────────
 
 function StepBar({ current }) {
@@ -161,27 +178,23 @@ export default function App() {
     setProgress(init)
 
     // extract PDF text via base64 → send to Anthropic as document
-    setStatus('A extrair texto do CV…')
+  setStatus('A extrair texto do CV…')
     let cvText = ''
     try {
-      const b64 = await extractTextFromPDF(cvFile)
-      // Use Anthropic to extract text from the PDF
-      const res = await fetch('/api/generate', {
+      cvText = await extractTextFromPDF(cvFile)
+      await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pdfBase64: b64,
-          extractOnly: true,
+          prompt: 'ok',
           email: form.email,
           newsletter: form.newsletter,
-          isFirst: true
+          isFirst: true,
+          logOnly: true
         })
       })
-      if (!res.ok) throw new Error('Erro a ler o PDF')
-      const data = await res.json()
-      cvText = data.text
     } catch (e) {
-      setGlobalErr('Erro ao ler o PDF: ' + e.message + '. Tente novamente.')
+      setGlobalErr('Erro ao ler o PDF: ' + e.message)
       setStatus('Erro.')
       return
     }
