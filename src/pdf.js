@@ -53,7 +53,7 @@ export async function generatePDF(sections, email, date) {
     doc.setFontSize(7.5)
     doc.setTextColor(...WH)
     doc.setFont('helvetica', 'normal')
-    doc.text('Diagnóstico de Reconversão de Carreira · HR Next Level Academy', ML, 6.8)
+    doc.text('Bússola de Carreira 360° · HR Next Level Academy', ML, 6.8)
     doc.text(date, PW - MR, 6.8, { align: 'right' })
     y = 18
   }
@@ -88,8 +88,8 @@ export async function generatePDF(sections, email, date) {
   doc.text('HR NEXT LEVEL ACADEMY', ML, 22)
 
   doc.setFontSize(22)
-  doc.text('Diagnóstico de', ML, 38)
-  doc.text('Reconversão de Carreira', ML, 50)
+  doc.text('Bússola de Carreira 360°', ML, 38)
+  doc.text('HR Next Level Academy', ML, 50)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9.5)
@@ -212,5 +212,5 @@ export async function generatePDF(sections, email, date) {
   doc.text('hr.nextlevel.academy@gmail.com', ML + 6, y + 13)
   doc.text('© 2026 · Uso pessoal · Proibida revenda', PW - MR, y + 13, { align: 'right' })
 
-  doc.save('Relatorio_Reconversao_Carreira.pdf')
+  doc.save('Bussola_Carreira_360.pdf')
 }
