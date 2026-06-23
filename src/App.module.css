@@ -328,6 +328,71 @@
 .footer a { color: rgba(255,255,255,.75); text-decoration: none; }
 .footer p + p { margin-top: .35rem; }
 
+/* ── WAIT ANIMATION ── */
+.waitBox {
+  text-align: center;
+  padding: 1.5rem 1rem 1rem;
+  margin-bottom: 1.5rem;
+}
+.compass {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid var(--green-light);
+  border-top-color: var(--green);
+  margin: 0 auto 1rem;
+  animation: spin 1.4s linear infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.compassNeedle {
+  width: 3px;
+  height: 26px;
+  background: linear-gradient(to bottom, var(--amber) 50%, var(--green) 50%);
+  border-radius: 2px;
+  transform-origin: center 75%;
+  animation: needle 1.4s ease-in-out infinite alternate;
+}
+@keyframes needle {
+  from { transform: rotate(-40deg); }
+  to   { transform: rotate(40deg); }
+}
+.dynMsg {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--green-dark);
+  margin-bottom: .4rem;
+  min-height: 1.5em;
+  transition: opacity .3s;
+}
+.waitHint {
+  font-size: .8rem;
+  color: var(--muted);
+  background: var(--amber-light);
+  border-left: 3px solid var(--amber);
+  border-radius: 0 6px 6px 0;
+  padding: .5rem .75rem;
+  display: inline-block;
+  text-align: left;
+  max-width: 420px;
+}
+
+/* ── RESUME BOX ── */
+.resumeBox {
+  margin-top: 1rem;
+  background: var(--green-light);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+.resumeMsg {
+  font-size: .88rem;
+  color: var(--green-dark);
+  margin-bottom: .75rem;
+  font-weight: 500;
+}
+
 /* ── CHECKBOX NEWSLETTER ── */
 .checkField {
   margin-bottom: 1.35rem;
