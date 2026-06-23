@@ -3,8 +3,9 @@ import styles from './App.module.css'
 import { SECCOES } from './prompts.js'
 import { generatePDF } from './pdf.js'
 
-// ── Extrai texto de PDF no browser via FileReader + API Anthropic vision ──
+// Extrai texto do PDF directamente no browser usando PDF.js (CDN)
 async function extractTextFromPDF(file) {
+  // Carrega PDF.js dinamicamente a partir do CDN
   if (!window.pdfjsLib) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script')
@@ -34,6 +35,7 @@ async function extractTextFromPDF(file) {
 
   return fullText.trim()
 }
+
 // ── Sub-components ────────────────────────────────────────
 
 function StepBar({ current }) {
@@ -140,15 +142,46 @@ function ReportSec({ title, content }) {
 // ── Main App ──────────────────────────────────────────────
 
 export default function App() {
-  const [step, setStep]         = useState(1)
-  const [cvFile, setCvFile]     = useState(null)
-  const [form, setForm]         = useState({ linkedin: '', q1: '', q2: '', email: '', newsletter: false })
-  const [errors, setErrors]     = useState({})
-  const [progress, setProgress] = useState({})
-  const [statusMsg, setStatus]  = useState('')
-  const [sections, setSections] = useState([])
+  const [step, setStep]           = useState(1)
+  const [cvFile, setCvFile]       = useState(null)
+  const [form, setForm]           = useState({ linkedin: '', q1: '', q2: '', email: '', newsletter: false })
+  const [errors, setErrors]       = useState({})
+  const [progress, setProgress]   = useState({})
+  const [statusMsg, setStatus]    = useState('')
+  const [sections, setSections]   = useState([])
   const [globalErr, setGlobalErr] = useState('')
-  const [pdfBusy, setPdfBusy]   = useState(false)
+  const [pdfBusy, setPdfBusy]     = useState(false)
+  const [dynMsg, setDynMsg]       = useState('')
+  // Guardados para retomar em caso de falha
+  const savedCvText   = useRef('')
+  const savedSections = useRef([])
+  const failedAt      = useRef(null)
+
+  // Mensagens dinâmicas enquanto espera
+  const MENSAGENS = [
+    'A ler o seu percurso profissional…',
+    'A identificar padrões de carreira…',
+    'A cruzar com dados do mercado português…',
+    'A construir os seus cenários…',
+    'A definir o plano de acção…',
+    'A preparar os ajustes ao CV e LinkedIn…',
+    'Quase pronto — a finalizar o relatório…',
+  ]
+  const dynInterval = useRef(null)
+
+  const startDynMessages = () => {
+    let idx = 0
+    setDynMsg(MENSAGENS[0])
+    dynInterval.current = setInterval(() => {
+      idx = (idx + 1) % MENSAGENS.length
+      setDynMsg(MENSAGENS[idx])
+    }, 6000)
+  }
+
+  const stopDynMessages = () => {
+    if (dynInterval.current) clearInterval(dynInterval.current)
+    setDynMsg('')
+  }
 
   const set = useCallback((k, v) => {
     setForm(f => ({ ...f, [k]: v }))
@@ -158,54 +191,68 @@ export default function App() {
   // ── validation ──
   const validate = () => {
     const e = {}
-    if (!cvFile) e.cv = 'Faça upload do seu CV em PDF.'
+    if (!cvFile && !savedCvText.current) e.cv = 'Faça upload do seu CV em PDF.'
     if (!form.linkedin.trim()) e.linkedin = 'Introduza o URL do seu perfil LinkedIn.'
     if (!form.email.trim() || !form.email.includes('@')) e.email = 'Introduza um e-mail válido.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  // ── analysis ──
-  const runAnalysis = async () => {
-    if (!validate()) return
+  // ── analysis — suporta retoma em caso de falha ──
+  const runAnalysis = async (resumeFrom = null) => {
+    if (!resumeFrom && !validate()) return
+
     setStep(2)
     setGlobalErr('')
-    setSections([])
+    failedAt.current = null
+    startDynMessages()
 
-    // init progress
+    // Aviso quando muda de separador
+    const handleVisibility = () => {
+      if (document.hidden) setStatus('⚠️ Não mude de separador — a análise pode ser interrompida.')
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    // Init progress
     const init = {}
     SECCOES.forEach(s => { init[s.key] = 'wait' })
+    if (resumeFrom) {
+      savedSections.current.forEach(s => {
+        const key = SECCOES.find(sec => sec.title === s.title)?.key
+        if (key) init[key] = 'done'
+      })
+    }
     setProgress(init)
 
-    // extract PDF text via base64 → send to Anthropic as document
-  setStatus('A extrair texto do CV…')
-    let cvText = ''
-    try {
-      cvText = await extractTextFromPDF(cvFile)
-      await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: 'ok',
-          email: form.email,
-          newsletter: form.newsletter,
-          isFirst: true,
-          logOnly: true
+    // Extracção do PDF (só na primeira vez, não em retoma)
+    let cvText = resumeFrom ? savedCvText.current : ''
+    if (!resumeFrom) {
+      setStatus('A extrair texto do CV…')
+      try {
+        cvText = await extractTextFromPDF(cvFile)
+        savedCvText.current = cvText
+        await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'ok', email: form.email, newsletter: form.newsletter, isFirst: true, logOnly: true })
         })
-      })
-    } catch (e) {
-      setGlobalErr('Erro ao ler o PDF: ' + e.message)
-      setStatus('Erro.')
-      return
+      } catch (e) {
+        stopDynMessages()
+        document.removeEventListener('visibilitychange', handleVisibility)
+        setGlobalErr('Erro ao ler o PDF: ' + e.message)
+        setStatus('Erro.')
+        return
+      }
     }
 
-    // generate 6 sections
-    const results = []
-    for (let i = 0; i < SECCOES.length; i++) {
+    // Geração das 6 secções — retoma do ponto de falha
+    const results = resumeFrom ? [...savedSections.current] : []
+    const startIdx = resumeFrom ? SECCOES.findIndex(s => s.key === resumeFrom) : 0
+
+    for (let i = startIdx; i < SECCOES.length; i++) {
       const sec = SECCOES[i]
       setProgress(p => ({ ...p, [sec.key]: 'running' }))
       setStatus(`A gerar: ${sec.title}…`)
-
       try {
         const prompt = sec.prompt(cvText, form.linkedin, form.q1, form.q2)
         const res = await fetch('/api/generate', {
@@ -219,15 +266,21 @@ export default function App() {
         }
         const data = await res.json()
         results.push({ title: sec.title, content: data.text })
+        savedSections.current = [...results]
         setProgress(p => ({ ...p, [sec.key]: 'done' }))
       } catch (e) {
+        stopDynMessages()
+        document.removeEventListener('visibilitychange', handleVisibility)
         setProgress(p => ({ ...p, [sec.key]: 'error' }))
+        failedAt.current = sec.key
         setGlobalErr(`Erro na secção "${sec.title}": ${e.message}`)
         setStatus('Análise interrompida.')
         return
       }
     }
 
+    stopDynMessages()
+    document.removeEventListener('visibilitychange', handleVisibility)
     setSections(results)
     setStatus('✓ Relatório completo!')
     setTimeout(() => setStep(3), 600)
@@ -248,6 +301,10 @@ export default function App() {
   // ── restart ──
   const restart = () => {
     setStep(1); setCvFile(null)
+    savedCvText.current = ''
+    savedSections.current = []
+    failedAt.current = null
+    stopDynMessages()
     setForm({ linkedin: '', q1: '', q2: '', email: '', newsletter: false })
     setErrors({}); setProgress({})
     setStatus(''); setSections([]); setGlobalErr('')
@@ -259,7 +316,7 @@ export default function App() {
 
       <header className={styles.hero}>
         <div className={styles.badge}>HR NEXT LEVEL ACADEMY</div>
-        <h1 className={styles.heroTitle}>Diagnóstico de Reconversão de Carreira</h1>
+        <h1 className={styles.heroTitle}>Bússola de Carreira 360°</h1>
         <p className={styles.heroSub}>
           Faça upload do seu CV e indique o seu LinkedIn. A IA analisa o seu perfil e gera
           um relatório personalizado com cenários a 3 e 5 anos.
@@ -355,22 +412,45 @@ export default function App() {
         {/* ── STEP 2 ── */}
         {step === 2 && (
           <div className={styles.section}>
-            <p className={styles.statusMsg}>{statusMsg}</p>
+
+            {/* Animação de espera + mensagem dinâmica */}
+            {!globalErr && (
+              <div className={styles.waitBox}>
+                <div className={styles.compass}>
+                  <div className={styles.compassNeedle} />
+                </div>
+                <p className={styles.dynMsg}>{dynMsg || statusMsg}</p>
+                <p className={styles.waitHint}>
+                  Por favor não feche nem mude de separador enquanto o relatório é gerado.
+                </p>
+              </div>
+            )}
+
             <ul className={styles.progList}>
               {SECCOES.map(s => (
                 <ProgItem key={s.key} sec={s} status={progress[s.key] || 'wait'} />
               ))}
             </ul>
+
             {globalErr && (
               <>
                 <div className={styles.globalErr}>{globalErr}</div>
-                <button
-                  className={styles.btnOutline}
-                  onClick={restart}
-                  style={{ marginTop: '1rem', width: '100%' }}
-                >
-                  ← Recomeçar
-                </button>
+                <div className={styles.resumeBox}>
+                  <p className={styles.resumeMsg}>
+                    As secções já concluídas foram guardadas. Pode retomar sem voltar ao início.
+                  </p>
+                  <div className={styles.actions}>
+                    <button
+                      className={styles.btnPrimary}
+                      onClick={() => runAnalysis(failedAt.current)}
+                    >
+                      ↺ Retomar análise
+                    </button>
+                    <button className={styles.btnOutline} onClick={restart}>
+                      ← Recomeçar
+                    </button>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -411,3 +491,4 @@ export default function App() {
     </div>
   )
 }
+
