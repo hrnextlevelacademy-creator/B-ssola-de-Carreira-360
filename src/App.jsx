@@ -3,9 +3,8 @@ import styles from './App.module.css'
 import { SECCOES } from './prompts.js'
 import { generatePDF } from './pdf.js'
 
-// Extrai texto do PDF directamente no browser usando PDF.js (CDN)
+// ── Extrai texto do PDF no browser com PDF.js ─────────────────────────────
 async function extractTextFromPDF(file) {
-  // Carrega PDF.js dinamicamente a partir do CDN
   if (!window.pdfjsLib) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script')
@@ -17,37 +16,25 @@ async function extractTextFromPDF(file) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
   }
-
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
   let fullText = ''
-
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
-    const pageText = content.items.map(item => item.str).join(' ')
-    fullText += pageText + '\n'
+    fullText += content.items.map(item => item.str).join(' ') + '\n'
   }
-
-  if (!fullText.trim()) {
-    throw new Error('Não foi possível extrair texto do PDF. Certifique-se de que o PDF não é uma imagem digitalizada.')
-  }
-
+  if (!fullText.trim()) throw new Error('Não foi possível extrair texto do PDF.')
   return fullText.trim()
 }
 
-// ── Sub-components ────────────────────────────────────────
-
+// ── StepBar ───────────────────────────────────────────────────────────────
 function StepBar({ current }) {
   return (
     <div className={styles.stepBar}>
       {['Dados', 'Análise', 'Relatório'].map((label, i) => {
         const n = i + 1
-        const cls = [
-          styles.stepItem,
-          current === n ? styles.stepActive : '',
-          current > n   ? styles.stepDone   : ''
-        ].filter(Boolean).join(' ')
+        const cls = [styles.stepItem, current === n ? styles.stepActive : '', current > n ? styles.stepDone : ''].filter(Boolean).join(' ')
         return (
           <div key={n} className={cls}>
             <div className={styles.stepNum}>{current > n ? '✓' : n}</div>
@@ -59,39 +46,26 @@ function StepBar({ current }) {
   )
 }
 
+// ── UploadZone ────────────────────────────────────────────────────────────
 function UploadZone({ file, onFile }) {
   const [drag, setDrag] = useState(false)
   const inputRef = useRef()
-
   const handle = (f) => {
     if (f && f.type === 'application/pdf') onFile(f)
     else alert('Por favor seleccione um ficheiro PDF.')
   }
-
   return (
     <div
-      className={[
-        styles.uploadArea,
-        drag ? styles.uploadAreaActive : '',
-        file ? styles.uploadSuccess : ''
-      ].filter(Boolean).join(' ')}
+      className={[styles.uploadArea, drag ? styles.uploadAreaActive : '', file ? styles.uploadSuccess : ''].filter(Boolean).join(' ')}
       onClick={() => inputRef.current.click()}
       onDragOver={e => { e.preventDefault(); setDrag(true) }}
       onDragLeave={() => setDrag(false)}
       onDrop={e => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files[0]) }}
-      role="button"
-      tabIndex={0}
+      role="button" tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && inputRef.current.click()}
-      aria-label="Área de upload do CV"
     >
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf"
-        className={styles.uploadInput}
-        onChange={e => handle(e.target.files[0])}
-        onClick={e => e.stopPropagation()}
-      />
+      <input ref={inputRef} type="file" accept=".pdf" className={styles.uploadInput}
+        onChange={e => handle(e.target.files[0])} onClick={e => e.stopPropagation()} />
       {file ? (
         <>
           <span className={styles.uploadIcon}>✓</span>
@@ -109,12 +83,10 @@ function UploadZone({ file, onFile }) {
   )
 }
 
+// ── ProgItem ──────────────────────────────────────────────────────────────
 function ProgItem({ sec, status }) {
   const icons = { wait: '○', running: '◌', done: '✓', error: '✕' }
-  const cls   = {
-    wait: styles.progWait, running: styles.progRunning,
-    done: styles.progDone, error: styles.progError
-  }
+  const cls = { wait: styles.progWait, running: styles.progRunning, done: styles.progDone, error: styles.progError }
   return (
     <li className={`${styles.progItem} ${cls[status] || ''}`}>
       <div className={styles.progIcon}>{icons[status]}</div>
@@ -127,10 +99,9 @@ function ProgItem({ sec, status }) {
   )
 }
 
+// ── ReportSec ─────────────────────────────────────────────────────────────
 function ReportSec({ title, content }) {
-  const html = content
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br />')
+  const html = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />')
   return (
     <div className={styles.reportSection}>
       <div className={styles.reportHead}>{title}</div>
@@ -139,8 +110,7 @@ function ReportSec({ title, content }) {
   )
 }
 
-// ── Main App ──────────────────────────────────────────────
-
+// ── Main App ──────────────────────────────────────────────────────────────
 export default function App() {
   const [step, setStep]           = useState(1)
   const [cvFile, setCvFile]       = useState(null)
@@ -148,16 +118,15 @@ export default function App() {
   const [errors, setErrors]       = useState({})
   const [progress, setProgress]   = useState({})
   const [statusMsg, setStatus]    = useState('')
+  const [dynMsg, setDynMsg]       = useState('')
   const [sections, setSections]   = useState([])
   const [globalErr, setGlobalErr] = useState('')
   const [pdfBusy, setPdfBusy]     = useState(false)
-  const [dynMsg, setDynMsg]       = useState('')
-  // Guardados para retomar em caso de falha
   const savedCvText   = useRef('')
   const savedSections = useRef([])
   const failedAt      = useRef(null)
+  const dynInterval   = useRef(null)
 
-  // Mensagens dinâmicas enquanto espera
   const MENSAGENS = [
     'A ler o seu percurso profissional…',
     'A identificar padrões de carreira…',
@@ -167,7 +136,6 @@ export default function App() {
     'A preparar os ajustes ao CV e LinkedIn…',
     'Quase pronto — a finalizar o relatório…',
   ]
-  const dynInterval = useRef(null)
 
   const startDynMessages = () => {
     let idx = 0
@@ -188,7 +156,6 @@ export default function App() {
     setErrors(e => ({ ...e, [k]: '' }))
   }, [])
 
-  // ── validation ──
   const validate = () => {
     const e = {}
     if (!cvFile && !savedCvText.current) e.cv = 'Faça upload do seu CV em PDF.'
@@ -198,33 +165,28 @@ export default function App() {
     return Object.keys(e).length === 0
   }
 
-  // ── analysis — suporta retoma em caso de falha ──
   const runAnalysis = async (resumeFrom = null) => {
     if (!resumeFrom && !validate()) return
-
     setStep(2)
     setGlobalErr('')
     failedAt.current = null
     startDynMessages()
 
-    // Aviso quando muda de separador
     const handleVisibility = () => {
       if (document.hidden) setStatus('⚠️ Não mude de separador — a análise pode ser interrompida.')
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
-    // Init progress
     const init = {}
     SECCOES.forEach(s => { init[s.key] = 'wait' })
     if (resumeFrom) {
       savedSections.current.forEach(s => {
-        const key = SECCOES.find(sec => sec.title === s.title)?.key
-        if (key) init[key] = 'done'
+        const found = SECCOES.find(sec => sec.title === s.title)
+        if (found) init[found.key] = 'done'
       })
     }
     setProgress(init)
 
-    // Extracção do PDF (só na primeira vez, não em retoma)
     let cvText = resumeFrom ? savedCvText.current : ''
     if (!resumeFrom) {
       setStatus('A extrair texto do CV…')
@@ -245,7 +207,6 @@ export default function App() {
       }
     }
 
-    // Geração das 6 secções — retoma do ponto de falha
     const results = resumeFrom ? [...savedSections.current] : []
     const startIdx = resumeFrom ? SECCOES.findIndex(s => s.key === resumeFrom) : 0
 
@@ -286,7 +247,6 @@ export default function App() {
     setTimeout(() => setStep(3), 600)
   }
 
-  // ── PDF ──
   const downloadPDF = async () => {
     setPdfBusy(true)
     try {
@@ -298,19 +258,14 @@ export default function App() {
     }
   }
 
-  // ── restart ──
   const restart = () => {
     setStep(1); setCvFile(null)
-    savedCvText.current = ''
-    savedSections.current = []
-    failedAt.current = null
+    savedCvText.current = ''; savedSections.current = []; failedAt.current = null
     stopDynMessages()
     setForm({ linkedin: '', q1: '', q2: '', email: '', newsletter: false })
-    setErrors({}); setProgress({})
-    setStatus(''); setSections([]); setGlobalErr('')
+    setErrors({}); setProgress({}); setStatus(''); setSections([]); setGlobalErr('')
   }
 
-  // ── render ──
   return (
     <div className={styles.app}>
 
@@ -326,13 +281,13 @@ export default function App() {
 
       <main className={styles.main}>
 
-        {/* ── STEP 1 ── */}
+        {/* STEP 1 */}
         {step === 1 && (
           <div className={styles.section}>
             <div className={styles.infoBox}>
               <strong>Como funciona</strong>
               Faça upload do CV em PDF, indique o LinkedIn e responda a 2 perguntas rápidas.
-              A análise demora 60–90 segundos e gera um relatório PDF para descarregar.
+              A análise demora 3–5 minutos e gera um relatório PDF para descarregar.
             </div>
 
             <div className={styles.field}>
@@ -343,13 +298,10 @@ export default function App() {
 
             <div className={styles.field}>
               <label className={styles.label} htmlFor="li">URL do perfil LinkedIn</label>
-              <input
-                id="li" type="url"
+              <input id="li" type="url"
                 className={`${styles.input} ${errors.linkedin ? styles.fieldErr : ''}`}
-                value={form.linkedin}
-                onChange={e => set('linkedin', e.target.value)}
-                placeholder="https://www.linkedin.com/in/seuperfil"
-              />
+                value={form.linkedin} onChange={e => set('linkedin', e.target.value)}
+                placeholder="https://www.linkedin.com/in/seuperfil" />
               <div className={styles.hint}>Não é necessário acesso à conta — apenas o URL.</div>
               {errors.linkedin && <div className={styles.errMsg}>{errors.linkedin}</div>}
             </div>
@@ -358,44 +310,33 @@ export default function App() {
 
             <div className={styles.field}>
               <label className={styles.label} htmlFor="q1">O que procura nesta reconversão?</label>
-              <textarea
-                id="q1" className={styles.textarea} rows={3}
+              <textarea id="q1" className={styles.textarea} rows={3}
                 value={form.q1} onChange={e => set('q1', e.target.value)}
-                placeholder="Ex: Quero sair da área técnica e entrar em gestão de pessoas. Ou: Quero perceber quais as minhas opções reais nos próximos anos."
-              />
+                placeholder="Ex: Quero sair da área técnica e entrar em gestão de pessoas." />
             </div>
 
             <div className={styles.field}>
-              <label className={styles.label} htmlFor="q2">
-                Há alguma área que o atrai, mesmo sem experiência directa?
-              </label>
-              <textarea
-                id="q2" className={styles.textarea} rows={3}
+              <label className={styles.label} htmlFor="q2">Há alguma área que o atrai, mesmo sem experiência directa?</label>
+              <textarea id="q2" className={styles.textarea} rows={3}
                 value={form.q2} onChange={e => set('q2', e.target.value)}
-                placeholder="Ex: Tenho interesse em RH e formação. Ou: Ainda não sei — é parte do que quero perceber."
-              />
+                placeholder="Ex: Tenho interesse em RH e formação. Ou: Ainda não sei." />
             </div>
 
             <div className={styles.field}>
               <label className={styles.label} htmlFor="email">O seu e-mail</label>
-              <input
-                id="email" type="email"
+              <input id="email" type="email"
                 className={`${styles.input} ${errors.email ? styles.fieldErr : ''}`}
                 value={form.email} onChange={e => set('email', e.target.value)}
-                placeholder="nome@email.pt"
-              />
+                placeholder="nome@email.pt" />
               <div className={styles.hint}>Consta no cabeçalho do relatório.</div>
               {errors.email && <div className={styles.errMsg}>{errors.email}</div>}
             </div>
 
             <div className={styles.checkField}>
               <label className={styles.checkLabel}>
-                <input
-                  type="checkbox"
-                  className={styles.checkbox}
+                <input type="checkbox" className={styles.checkbox}
                   checked={form.newsletter || false}
-                  onChange={e => set('newsletter', e.target.checked)}
-                />
+                  onChange={e => set('newsletter', e.target.checked)} />
                 <span>
                   Aceito receber a newsletter <strong>HR Next Level Academy</strong> com
                   conteúdos sobre RH, carreiras e novas ferramentas. Pode cancelar a qualquer momento.
@@ -403,17 +344,15 @@ export default function App() {
               </label>
             </div>
 
-            <button className={styles.btnPrimary} onClick={runAnalysis}>
+            <button className={styles.btnPrimary} onClick={() => runAnalysis(null)}>
               Analisar o meu perfil →
             </button>
           </div>
         )}
 
-        {/* ── STEP 2 ── */}
+        {/* STEP 2 */}
         {step === 2 && (
           <div className={styles.section}>
-
-            {/* Animação de espera + mensagem dinâmica */}
             {!globalErr && (
               <div className={styles.waitBox}>
                 <div className={styles.compass}>
@@ -425,13 +364,11 @@ export default function App() {
                 </p>
               </div>
             )}
-
             <ul className={styles.progList}>
               {SECCOES.map(s => (
                 <ProgItem key={s.key} sec={s} status={progress[s.key] || 'wait'} />
               ))}
             </ul>
-
             {globalErr && (
               <>
                 <div className={styles.globalErr}>{globalErr}</div>
@@ -440,10 +377,7 @@ export default function App() {
                     As secções já concluídas foram guardadas. Pode retomar sem voltar ao início.
                   </p>
                   <div className={styles.actions}>
-                    <button
-                      className={styles.btnPrimary}
-                      onClick={() => runAnalysis(failedAt.current)}
-                    >
+                    <button className={styles.btnPrimary} onClick={() => runAnalysis(failedAt.current)}>
                       ↺ Retomar análise
                     </button>
                     <button className={styles.btnOutline} onClick={restart}>
@@ -456,7 +390,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── STEP 3 ── */}
+        {/* STEP 3 */}
         {step === 3 && (
           <div className={styles.section}>
             <div className={styles.infoBox}>
@@ -484,11 +418,12 @@ export default function App() {
         <p>Relatório gerado por IA com base nas informações fornecidas. Carácter orientador — não substitui aconselhamento profissional de carreira.</p>
         <p style={{marginTop:'0.5rem'}}>
           <a href="/privacidade.html">Política de Privacidade</a>
-          {' · '}
-          Ao utilizar esta ferramenta, aceita o tratamento dos seus dados nos termos descritos.
+          {' · '}Ao utilizar esta ferramenta, aceita o tratamento dos seus dados nos termos descritos.
         </p>
       </footer>
+
     </div>
   )
 }
+
 
